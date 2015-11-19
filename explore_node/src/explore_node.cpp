@@ -8,6 +8,8 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
+#include "create_node/TurtlebotSensorState.h"
+#include "sensor_msgs/Joy.h"
 
 /* OpenCV */
 #include <opencv2/core/core.hpp>
@@ -30,6 +32,8 @@ using namespace std;
 #define RIGHT 	   -90
 
 #define MAX_ANGLE 240
+
+#define PRESSED 1
 /*===========Internal Function Declaration =========================*/
 /* Callback functions */
 void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg);
@@ -46,14 +50,18 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
 /*============== External Data =====================================*/
 /*============== Internal data =====================================*/
-ros::Subscriber sub;  	 /* Robot sensor   */
+ros::Subscriber sub;  	 /* Robot sensor     */
 ros::Subscriber subOdo;  /* Robot odometry   */
-ros::Publisher pub;   	 /* Robot actuator */
+ros::Subscriber joy_sub;  /* Xbox Controller  */
+ros::Publisher pub;   	 /* Robot actuator   */
 sensor_msgs::LaserScan Z_t;  /* Robot Sensor Data Buffer */
 nav_msgs::Odometry Odo_t;
 
+
 ros::Time last_time; /* Time Stamp   */
 ros::Duration elapsed;                  /* Time Elapsed */
+
+bool autoExploreMode;
 /*============== Constant Data =====================================*/
 /*===========Internal Function Definition ==========================*/
 /*
@@ -203,7 +211,7 @@ void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg)
 
 
 /*
- *  Odo Receiever
+ *  Odo Receiver
  *
  */
 void got_odo(const nav_msgs::Odometry::ConstPtr& msg)
@@ -211,6 +219,33 @@ void got_odo(const nav_msgs::Odometry::ConstPtr& msg)
   Odo_t = *msg;
 }
 
+
+/*
+ *  Joystick Receiver
+ *
+ */
+void joyCallback (const sensor_msgs::Joy::ConstPtr& msg)
+{
+   /*  		/joy.buttons
+    *  Idx 			Button Name
+	*	0				A
+	*	1				B
+	*	2				X
+	*	3				Y
+	*	4				LB
+	*	5				RB
+	*	6				Back
+	*	7				Start
+	*	8				Power
+	*	9				Button Stick Left
+	*	10				Button Stick Right
+	*/
+
+	if(msg->buttons[RB] == PRESSED)
+	{
+		autoExploreMode = !autoExploreMode;
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -226,6 +261,9 @@ int main(int argc, char **argv)
   pub = nh.advertise<geometry_msgs::Twist>("/stage/cmd_vel", 1);
   sub = nh.subscribe<sensor_msgs::LaserScan>("/stage/base_scan", 1, got_scan);
   subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo);
+
+  /* Enable Autonmous Wonder Mode on Start */
+  autoExploreMode = true;
 #else
 
   /* Whatever the Create 2 movement is
@@ -235,7 +273,11 @@ int main(int argc, char **argv)
 
   /* Whatever the Create 2 odometry is
   subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo); */
+  /* Listen to joystick joy topic */
+  joy_sub = n.subscribe("joy", 1000, joyCallback);
 
+  /* Disable Autonmous Wonder Mode on Start */
+  autoExploreMode = false;
 #endif
   /* Initialize OpenGL */
   //initMclTools(argc, argv);
@@ -248,8 +290,15 @@ int main(int argc, char **argv)
   { 
     ros::spinOnce();
     
-    policy(&U, &Z_t, &Odo_t);
-    
+    if(autoExploreMode)
+    {
+    	/* Autonmous Wonder mode */
+    	policy(&U, &Z_t, &Odo_t);
+    }
+    else
+    {
+    	/* Only respond to Xbox controller */
+    }
    //r.sleep();
   }
 
