@@ -20,6 +20,7 @@ using namespace cv;
 /* C/C++ Libraries */
 #include <iostream>
 #include <math.h>
+#include <vector>
 #include "string.h"
 using namespace std;
 
@@ -35,6 +36,8 @@ using namespace std;
 #define MAX_ANGLE 240
 
 #define PRESSED 1
+
+#define NUM_PARTICLES 100
 /*===========Internal Function Declaration =========================*/
 /* Callback functions */
 void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg);
@@ -49,6 +52,8 @@ void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 
 u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
+
+vector<Particle_t> FastSlam_occpancy_grids(vector<Particle_t> *Particles, Twist_t *U, Laser_t *Z);
 /*============== External Data =====================================*/
 /*============== Internal data =====================================*/
 
@@ -56,12 +61,14 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
 ros::Subscriber sub;  	 /* Robot sensor     */
 ros::Subscriber subOdo;  /* Robot odometry   */
 ros::Subscriber joy_sub;  /* Xbox Controller  */
+ros::Subscriber subCreate;
 ros::Publisher pub;   	 /* Robot actuator   */
 
 /* Global data via topics  */
 sensor_msgs::LaserScan Z_t;  	/* Robot Sensor Data Buffer */
 nav_msgs::Odometry Odo_g;		/* Robot Odometry */
 nav_msgs::OccupancyGrid Map_g;	/* Most confident Map */
+create_node::TurtlebotSensorState CreateSensor_g;
 
 ros::Time last_time; 			/* Time Stamp   */
 ros::Duration elapsed;          /* Time Elapsed */
@@ -70,9 +77,10 @@ ros::Duration elapsed;          /* Time Elapsed */
 bool autoExploreMode;
 
 /*============== Constant Data =====================================*/
+//============== Type Definiton ========================================//
+
+
 /*===========Internal Function Definition ==========================*/
-
-
 
 /*
  *  Get Index Intesity of a 240 degree angle sensor
@@ -162,6 +170,17 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 
 	pub.publish(*U);
 }
+void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
+{
+	f32_t vel = -speed_m_s;
+
+	U->linear.x = vel;
+	U->linear.y = 0.0f;
+	U->angular.z = 0.0f;
+
+	pub.publish(*U);
+}
+
 /*  Name: moveCCW
  *
  *  Purpose: To move counter clockwise
@@ -181,6 +200,12 @@ void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 	pub.publish(*U);
 }
 
+void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
+{
+	moveBW(U, Odo, 0.5f);
+	moveCW(U, Odo, 0.5f);
+	moveCW(U, Odo, 0.5f);
+}
 /*
  *  Exploration Policy
  *
@@ -193,14 +218,18 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 	if(Z->ranges.size() == 0)
 		return;
 
+	if(CreateSensor_g.bumps_wheeldrops)
+	{
+		bumpPolicy(U, Odo);
+	}
 	/* Turn right if there's a wall infront */
 	if(ForwardWall(Z))
-		moveCW(U, Odo, 4.0f);
+		moveCW(U, Odo, 0.1f);
 	else if(ExploreLeft(Z))
-		moveCCW(U, Odo, 4.0f);
+		moveCCW(U, Odo, 0.1f);
 	/* When there are no obstacles infront, move forward */
 	else
-		moveFW(U, Odo, 4.0f);
+		moveFW(U, Odo, 0.5f);
 
 	/* For debugging purpose, wait for enter key */
 	//std::cout << "Left angle idx: "<< SensorAngleIdx(Z, LEFT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, LEFT)] << std::endl;
@@ -241,6 +270,14 @@ void got_map(const nav_msgs::OccupancyGrid::ConstPtr& msg)
 }
 
 /*
+ *  Create Sensor Receiver
+ *
+ */
+void got_create_sensor(const create_node::TurtlebotSensorState::ConstPtr& msg )
+{
+	CreateSensor_g = *msg;
+}
+/*
  *  Joystick Receiver
  *
  */
@@ -263,9 +300,16 @@ void joyCallback (const sensor_msgs::Joy::ConstPtr& msg)
 
 	if(msg->buttons[RB] == PRESSED)
 	{
-		autoExploreMode = !autoExploreMode;
+		autoExploreMode = true;
+		cout << "Button RB: detected, Mode: "<<  autoExploreMode << endl;
+	}
+	else if(msg->buttons[LB] == PRESSED)
+	{
+		autoExploreMode = false;
+		cout << "Button RB: detected, Mode: "<<  autoExploreMode << endl;
 	}
 }
+
 
 int main(int argc, char **argv)
 {
@@ -292,7 +336,9 @@ int main(int argc, char **argv)
   /* Whatever the Create 2 movement is */
   pub = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
   /* Whatever the Hokoyu LIDAR scan is */
-  sub = nh.subscribe<sensor_msgs::LaserScan>("/sensor_msgs/LaserScan", 1, got_scan);
+  sub = nh.subscribe<sensor_msgs::LaserScan>("/scan", 1, got_scan);
+
+  subCreate = nh.subscribe("/turtlebot_node/sensor_state", 1, got_create_sensor);
 
   /* Whatever the Create 2 odometry is
   subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo); */
@@ -327,3 +373,29 @@ int main(int argc, char **argv)
 
   return 0;
 }
+
+
+#if 0 
+/* Work in progress */
+/*		FastSLAM Occupancy Grid
+ *	
+ *
+ */
+vector<Particle_t> FastSlam_occpancy_grids(vector<Particle_t> *Particles_then, Twist_t *U, Laser_t *Z)
+{
+	vector<Particle_t> Particles_now
+	vector<Particle_t>::iterator k_then;
+	for(k_then = Particles_then.begin(), k_now = Particles_now.begin(); 
+		k_then = Particles_then.end(); 
+		k_then++, k_now++)
+	{
+		k_now = sample_motion_model(U, k_then);
+
+	}
+	for(k = 0; k < NUM_PARTICLES; k++)
+	{
+
+	}
+
+}
+#endif
