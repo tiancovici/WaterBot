@@ -25,7 +25,7 @@ using namespace std;
 /* Tom's Libraries */
 #include "types.h" 
 //============== Symbolic Constants ================================//
-#define SIM
+//#define SIM
 
 #define STRAIGHT     0
 #define LEFT 		90
@@ -73,13 +73,13 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t degrees)
 	u32_t idx;
 	const f32_t theta2idx = ((f32_t)Z->ranges.size())/((f32_t)MAX_ANGLE);
 	const u32_t zeroIdx = (u32_t)(theta2idx* 120.0f);
-	/* 			Straight
-	              120
+	/* 			 Straight
+				   120
 	
 		
 	left  210              30   Right
 
-			  240		0
+				240		0
 	*/
 	if(degrees == STRAIGHT)
 		idx =  zeroIdx;
@@ -97,7 +97,7 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t degrees)
  *
  *  Purpose: To check if there's a wall infront within vicinity of -20 to 20 degrees.
  *	 Return 1, Yes
- *			  0, No
+ *			0, No
  */
 inline bool ForwardWall(sensor_msgs::LaserScan *Z)
 {
@@ -109,7 +109,7 @@ inline bool ForwardWall(sensor_msgs::LaserScan *Z)
  *
  *  Purpose: To determine whether it's wroth exploring left
  *	 Return 1, Yes
- *			  0, No
+ *			0, No
  */
 inline bool ExploreLeft(sensor_msgs::LaserScan *Z)
 {
@@ -119,9 +119,9 @@ inline bool ExploreLeft(sensor_msgs::LaserScan *Z)
 /*  Name: moveCW
  *
  *  Purpose: To move clockwise
- *	 Input  	 speed_m_s, speed (rad/s)
- *				 U, pointer to a twist data structure
- *				 Odo, pointer to odometry data
+ *	 Input 		speed_m_s, speed (rad/s)
+ *				U, pointer to a twist data structure
+ *				Odo, pointer to odometry data
  *			  
  */
 void moveCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
@@ -155,9 +155,9 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 /*  Name: moveCCW
  *
  *  Purpose: To move counter clockwise
- *	 Input  	 speed_m_s, speed (rad/s)
- *				 U, pointer to a twist data structure
- *				 Odo, pointer to odometry data
+ *	 Input		speed_m_s, speed (rad/s)
+ *				U, pointer to a twist data structure
+ *				Odo, pointer to odometry data
  *			  
  */
 void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
@@ -196,6 +196,8 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 	//std::cout << "Left angle idx: "<< SensorAngleIdx(Z, LEFT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, LEFT)] << std::endl;
 	//std::cout << "Straight  idx: "<< SensorAngleIdx(Z, STRAIGHT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, STRAIGHT)] << std::endl;
 	//std::cout << "Right angle idx: "<< SensorAngleIdx(Z, RIGHT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, RIGHT)] << std::endl;
+	
+	//Odo->
 	//cin.get();
 }
 
@@ -234,11 +236,11 @@ void joyCallback (const sensor_msgs::Joy::ConstPtr& msg)
 	*	3				Y
 	*	4				LB
 	*	5				RB
-	*	6				Back
-	*	7				Start
-	*	8				Power
-	*	9				Button Stick Left
-	*	10				Button Stick Right
+	*	6				Back				(BACK)
+	*	7				Start 				(START)
+	*	8				Power				(POWER)
+	*	9				Button Stick Left 	(LEFT)
+	*	10				Button Stick Right 	(RIGHT)
 	*/
 
 	if(msg->buttons[RB] == PRESSED)
@@ -258,23 +260,26 @@ int main(int argc, char **argv)
   ros::NodeHandle nh;
   last_time = ros::Time::now();
 #if defined(SIM)
+  
   pub = nh.advertise<geometry_msgs::Twist>("/stage/cmd_vel", 1);
+  
   sub = nh.subscribe<sensor_msgs::LaserScan>("/stage/base_scan", 1, got_scan);
+
   subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo);
 
   /* Enable Autonmous Wonder Mode on Start */
   autoExploreMode = true;
 #else
 
-  /* Whatever the Create 2 movement is
-  pub = nh.advertise<geometry_msgs::Twist>("/stage/cmd_vel", 1); */
-  /* Whatever the Hokoyu LIDAR scan is
-  sub = nh.subscribe<sensor_msgs::LaserScan>("/stage/base_scan", 1, got_scan); */
+  /* Whatever the Create 2 movement is */
+  pub = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
+  /* Whatever the Hokoyu LIDAR scan is */
+  sub = nh.subscribe<sensor_msgs::LaserScan>("/sensor_msgs/LaserScan", 1, got_scan);
 
   /* Whatever the Create 2 odometry is
   subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo); */
   /* Listen to joystick joy topic */
-  joy_sub = n.subscribe("joy", 1000, joyCallback);
+  joy_sub = nh.subscribe("joy", 1000, joyCallback);
 
   /* Disable Autonmous Wonder Mode on Start */
   autoExploreMode = false;

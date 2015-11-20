@@ -25,6 +25,7 @@ typedef enum
 	RB,
 	BACK,
 	START,
+	POWER,
 	LEFT,
 	RIGHT
 }button_t;
