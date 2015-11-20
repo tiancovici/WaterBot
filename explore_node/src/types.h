@@ -2,6 +2,7 @@
 #define UTIL_H
 //================== Includes ======================================//
 #include <sensor_msgs/LaserScan.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include "sensor_msgs/Joy.h"
 //============== Type Definiton ========================================//
 typedef signed short s16_t;
@@ -13,8 +14,8 @@ typedef double f64_t;
 
 typedef sensor_msgs::LaserScan Laser_t;
 typedef geometry_msgs::Twist Twist_t;
+typedef nav_msgs::OccupancyGrid Map_t;
 
-//============== Type Definiton ========================================//
 typedef enum
 {
 	A = 0,

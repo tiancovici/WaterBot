@@ -5,6 +5,7 @@
 //============== Inclusion ========================================//
 /* ROS */
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
@@ -50,20 +51,29 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
 /*============== External Data =====================================*/
 /*============== Internal data =====================================*/
+
+/* Subscribers/Publishers */
 ros::Subscriber sub;  	 /* Robot sensor     */
 ros::Subscriber subOdo;  /* Robot odometry   */
 ros::Subscriber joy_sub;  /* Xbox Controller  */
 ros::Publisher pub;   	 /* Robot actuator   */
-sensor_msgs::LaserScan Z_t;  /* Robot Sensor Data Buffer */
-nav_msgs::Odometry Odo_t;
 
+/* Global data via topics  */
+sensor_msgs::LaserScan Z_t;  	/* Robot Sensor Data Buffer */
+nav_msgs::Odometry Odo_g;		/* Robot Odometry */
+nav_msgs::OccupancyGrid Map_g;	/* Most confident Map */
 
-ros::Time last_time; /* Time Stamp   */
-ros::Duration elapsed;                  /* Time Elapsed */
+ros::Time last_time; 			/* Time Stamp   */
+ros::Duration elapsed;          /* Time Elapsed */
 
+/* Configuraiton */
 bool autoExploreMode;
+
 /*============== Constant Data =====================================*/
 /*===========Internal Function Definition ==========================*/
+
+
+
 /*
  *  Get Index Intesity of a 240 degree angle sensor
  *
@@ -218,9 +228,17 @@ void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg)
  */
 void got_odo(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  Odo_t = *msg;
+  Odo_g = *msg;
 }
 
+/*
+ *  Map Receiver
+ *
+ */
+void got_map(const nav_msgs::OccupancyGrid::ConstPtr& msg)
+{
+  Map_g = *msg;
+}
 
 /*
  *  Joystick Receiver
@@ -298,7 +316,7 @@ int main(int argc, char **argv)
     if(autoExploreMode)
     {
     	/* Autonmous Wonder mode */
-    	policy(&U, &Z_t, &Odo_t);
+    	policy(&U, &Z_t, &Odo_g);
     }
     else
     {
