@@ -30,14 +30,6 @@ typedef enum
 	LEFT,
 	RIGHT
 }button_t;
-
-typedef struct
-{
-	f32_t x;
-	f32_t y;
-	f32_t t;
-	f32_t w;
-}Particle_t;
 //============== Symbolic Constants ================================//
 #define PI 3.14159265 	/* pi */
 

@@ -11,7 +11,8 @@
 #include <sensor_msgs/LaserScan.h>
 #include "create_node/TurtlebotSensorState.h"
 #include "sensor_msgs/Joy.h"
-
+#include "tf/message_filter.h"
+#include "tf/transform_datatypes.h"
 /* OpenCV */
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -27,7 +28,7 @@ using namespace std;
 /* Tom's Libraries */
 #include "types.h" 
 //============== Symbolic Constants ================================//
-//#define SIM
+#define SIM
 
 #define STRAIGHT     0
 #define LEFT 		90
@@ -37,7 +38,6 @@ using namespace std;
 
 #define PRESSED 1
 
-#define NUM_PARTICLES 100
 /*===========Internal Function Declaration =========================*/
 /* Callback functions */
 void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg);
@@ -50,10 +50,12 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 void moveCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
+void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 
+
+f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z);
 u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
 
-vector<Particle_t> FastSlam_occpancy_grids(vector<Particle_t> *Particles, Twist_t *U, Laser_t *Z);
 /*============== External Data =====================================*/
 /*============== Internal data =====================================*/
 
@@ -111,28 +113,6 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t degrees)
 	return idx;
 }
 
-/*  Name: ForwardWall
- *
- *  Purpose: To check if there's a wall infront within vicinity of -20 to 20 degrees.
- *	 Return 1, Yes
- *			0, No
- */
-inline bool ForwardWall(sensor_msgs::LaserScan *Z)
-{
-	return (Z->ranges[SensorAngleIdx(Z, STRAIGHT)] < 2.0f)
-		 || (Z->ranges[SensorAngleIdx(Z, STRAIGHT + 20)] < 2.0f)
-		 || (Z->ranges[SensorAngleIdx(Z, STRAIGHT - 20)] < 2.0f);
-}
-/*  Name: ExploreLeft
- *
- *  Purpose: To determine whether it's wroth exploring left
- *	 Return 1, Yes
- *			0, No
- */
-inline bool ExploreLeft(sensor_msgs::LaserScan *Z)
-{
-	return (Z->ranges[SensorAngleIdx(Z, 40.0f)] > 3.0f);
-}
 
 /*  Name: moveCW
  *
@@ -170,6 +150,14 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 
 	pub.publish(*U);
 }
+/*  Name: moveFW
+ *
+ *  Purpose: To move backward
+ *	 Input  	 speed_m_s, speed (rad/s)
+ *				 U, pointer to a twist data structure
+ *				 Odo, pointer to odometry data
+ *			  
+ */
 void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 {
 	f32_t vel = -speed_m_s;
@@ -200,9 +188,86 @@ void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 	pub.publish(*U);
 }
 
+
+
+
+/*  Name: AveRange
+ *
+ *  Purpose: Integrate the laser magnitued across a range of degrees, and average it
+ *	 Return Average value
+ */
+f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z)
+{
+	u32_t i;
+	u32_t init_idx = SensorAngleIdx(Z, minTheta);
+	u32_t end_idx = SensorAngleIdx(Z, maxTheta);
+
+	f32_t sum = 0;
+
+	for(i=init_idx, sum=0; i<end_idx; i++)
+	{
+		sum += Z->ranges[i];
+	}
+	return sum/(end_idx - init_idx);
+}
+/*  Name: AveBeam
+ *
+ *  Purpose: Integrate the laser magnitued across a small range of the degree of interest
+ *			 to reduce noise when looking at a specific angle
+ *	 Return Average value
+ */
+f32_t AveBeam(f32_t theta, sensor_msgs::LaserScan *Z)
+{
+	u32_t i;
+	u32_t init_idx = SensorAngleIdx(Z, theta-1);
+	u32_t end_idx = SensorAngleIdx(Z, theta+1);
+
+	f32_t sum = 0;
+
+	for(i=init_idx, sum=0; i<end_idx; i++)
+	{
+		sum += Z->ranges[i];
+	}
+	return sum/(end_idx - init_idx);
+}
+/*  Name: ExploreLeft
+ *
+ *  Purpose: To determine whether it's wroth exploring left
+ *	 Return 1, Yes
+ *			0, No
+ */
+inline bool ExploreLeft(sensor_msgs::LaserScan *Z)
+{
+	bool expLeft = false;
+	expLeft = AveBeam(45.0f, Z) > 4.0f;
+	return expLeft;
+}
+/*  Name: ForwardWall
+ *
+ *  Purpose: To check if there's a wall infront within vicinity of -20 to 20 degrees.
+ *	 Return 1, Yes
+ *			0, No
+ */
+inline bool ForwardWall(sensor_msgs::LaserScan *Z)
+{
+	return (AvgRange(-15.0f, 15.0f, Z) < 2.0f)		/* Forward Wall */
+		|| (AvgRange( 30.0f, 32.0f, Z) < 2.0f)		/* Diagnoal obstacles */ 
+		|| (AvgRange( -32.0f, -30.0f, Z) < 2.0f);
+}
+/*  Name: bumpPolicy
+ *
+ *  Purpose: To move in a certain sequence when bumping into an object
+ *	 Input		U, pointer to a twist data structure
+ *				Odo, pointer to odometry data
+ *			  
+ */
 void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
 {
 	moveBW(U, Odo, 0.5f);
+	moveBW(U, Odo, 0.5f);
+	moveBW(U, Odo, 0.5f);
+	moveCW(U, Odo, 0.5f);
+	moveCW(U, Odo, 0.5f);
 	moveCW(U, Odo, 0.5f);
 	moveCW(U, Odo, 0.5f);
 }
@@ -212,12 +277,23 @@ void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
  */
 void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odometry *Odo)
 {
-	f32_t finalRange;
-
 	/* Case we have no data, do nothing */
 	if(Z->ranges.size() == 0)
 		return;
 
+/* No bumper in simulation */
+#if defined(SIM)
+
+	/* Turn right if there's a wall infront */
+	if(ForwardWall(Z))
+		moveCW(U, Odo, 2.0f);
+	else if(ExploreLeft(Z))
+		moveCCW(U, Odo, 4.0f);
+	/* When there are no obstacles infront, move forward */
+	else
+		moveFW(U, Odo, 4.0f);
+
+#else
 	if(CreateSensor_g.bumps_wheeldrops)
 	{
 		bumpPolicy(U, Odo);
@@ -230,13 +306,8 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 	/* When there are no obstacles infront, move forward */
 	else
 		moveFW(U, Odo, 0.5f);
-
+#endif
 	/* For debugging purpose, wait for enter key */
-	//std::cout << "Left angle idx: "<< SensorAngleIdx(Z, LEFT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, LEFT)] << std::endl;
-	//std::cout << "Straight  idx: "<< SensorAngleIdx(Z, STRAIGHT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, STRAIGHT)] << std::endl;
-	//std::cout << "Right angle idx: "<< SensorAngleIdx(Z, RIGHT) << "Range value: " << Z->ranges[SensorAngleIdx(Z, RIGHT)] << std::endl;
-	
-	//Odo->
 	//cin.get();
 }
 
@@ -373,29 +444,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
-
-#if 0 
-/* Work in progress */
-/*		FastSLAM Occupancy Grid
- *	
- *
- */
-vector<Particle_t> FastSlam_occpancy_grids(vector<Particle_t> *Particles_then, Twist_t *U, Laser_t *Z)
-{
-	vector<Particle_t> Particles_now
-	vector<Particle_t>::iterator k_then;
-	for(k_then = Particles_then.begin(), k_now = Particles_now.begin(); 
-		k_then = Particles_then.end(); 
-		k_then++, k_now++)
-	{
-		k_now = sample_motion_model(U, k_then);
-
-	}
-	for(k = 0; k < NUM_PARTICLES; k++)
-	{
-
-	}
-
-}
-#endif
