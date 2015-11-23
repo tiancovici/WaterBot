@@ -13,11 +13,13 @@ if version_info >= (2, 6, 0):
 
         fp = None
         try:
-            fp, pathname, description = imp.find_module('_raycaster', [dirname(__file__)])
+            fp, pathname, description = imp.find_module('_raycaster')
+            # fp, pathname, description = imp.find_module('_raycaster', [dirname(__file__)])
         except ImportError:
             import _raycaster
 
             return _raycaster
+
         if fp is not None:
             try:
                 _mod = imp.load_module('_raycaster', fp, pathname, description)

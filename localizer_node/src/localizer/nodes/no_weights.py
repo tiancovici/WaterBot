@@ -5,20 +5,16 @@
 # For: Mobile Robots - PS6
 
 import roslib
-import rospy
-import sys
-# attempt to add mcl_tools
-try:
-    roslib.load_manifest('localizer')
-    rospy.init_node('localizer')
-    import mcl_tools
-except ImportError:
-    print "error importing mcl tools"
-    sys.exit(1)
 
-from math import *
+roslib.load_manifest('localizer')
+import rospy as rp
 import numpy as np
+
+rp.init_node('localizer')
+import mcl_tools
+from math import atan2
 from functools import partial
+
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 
@@ -159,5 +155,5 @@ if __name__ == '__main__':
     rp.Subscriber('/robot/base_scan', LaserScan, got_scan, queue_size=1)
     cmd_vel = rp.Publisher('/robot/cmd_vel', Twist, queue_size=1)
 
-    mcl_tools.mcl_init('no_weights')
+    mcl_tools.mcl_init('localizer')
     mcl_tools.mcl_run_viz()

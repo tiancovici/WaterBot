@@ -7,12 +7,15 @@ import sys
 import math
 import time
 import random
+
 import roslib
+
 
 # You'll need to go into src/raycaster and type "make"
 # to build the C extension.
 try:
-    from raycaster import *
+    # from raycaster import *
+    import raycaster
 except():
     print "Error importing raycaster extension"
     sys.exit(1)
@@ -43,8 +46,6 @@ except:
     sys.exit(1)
 
 # Generate and sample particles.
-
-import mcl_debug
 
 
 def random_particle():
