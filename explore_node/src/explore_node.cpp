@@ -12,10 +12,6 @@
 #include "create_node/TurtlebotSensorState.h"
 #include "sensor_msgs/Joy.h"
 #include "tf/transform_datatypes.h"
-/* OpenCV */
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-using namespace cv;
 
 /* C/C++ Libraries */
 #include <iostream>
@@ -25,9 +21,9 @@ using namespace cv;
 using namespace std;
 
 /* Tom's Libraries */
-#include "types.h" 
+#include "types.h"
 //============== Symbolic Constants ================================//
-#define SIM
+//#define SIM
 
 #define STRAIGHT     0
 #define LEFT 		90
@@ -92,8 +88,8 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t degrees)
 	const u32_t zeroIdx = (u32_t)(theta2idx* 120.0f);
 	/* 			 Straight
 				   120
-	
-		
+
+
 	left  210              30   Right
 
 				240		0
@@ -155,7 +151,7 @@ f32_t AveBeam(f32_t theta, sensor_msgs::LaserScan *Z)
  *	 Input 		speed_m_s, speed (rad/s)
  *				U, pointer to a twist data structure
  *				Odo, pointer to odometry data
- *			  
+ *
  */
 void moveCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 {
@@ -173,7 +169,7 @@ void moveCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
  *	 Input  	 speed_m_s, speed (rad/s)
  *				 U, pointer to a twist data structure
  *				 Odo, pointer to odometry data
- *			  
+ *
  */
 void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 {
@@ -191,7 +187,7 @@ void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
  *	 Input  	 speed_m_s, speed (rad/s)
  *				 U, pointer to a twist data structure
  *				 Odo, pointer to odometry data
- *			  
+ *
  */
 void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 {
@@ -210,7 +206,7 @@ void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
  *	 Input		speed_m_s, speed (rad/s)
  *				U, pointer to a twist data structure
  *				Odo, pointer to odometry data
- *			  
+ *
  */
 void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 {
@@ -243,7 +239,7 @@ inline bool ExploreLeft(sensor_msgs::LaserScan *Z)
 inline bool ForwardWall(sensor_msgs::LaserScan *Z)
 {
 	return (AvgRange(-15.0f, 15.0f, Z) < 2.0f)		/* Forward Wall */
-		|| (AvgRange( 30.0f, 32.0f, Z) < 2.0f)		/* Diagnoal obstacles */ 
+		|| (AvgRange( 30.0f, 32.0f, Z) < 2.0f)		/* Diagnoal obstacles */
 		|| (AvgRange( -32.0f, -30.0f, Z) < 2.0f);
 }
 /*  Name: bumpPolicy
@@ -251,17 +247,30 @@ inline bool ForwardWall(sensor_msgs::LaserScan *Z)
  *  Purpose: To move in a certain sequence when bumping into an object
  *	 Input		U, pointer to a twist data structure
  *				Odo, pointer to odometry data
- *			  
+ *
  */
 void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
 {
-	moveBW(U, Odo, 0.5f);
-	moveBW(U, Odo, 0.5f);
-	moveBW(U, Odo, 0.5f);
-	moveCW(U, Odo, 0.5f);
-	moveCW(U, Odo, 0.5f);
-	moveCW(U, Odo, 0.5f);
-	moveCW(U, Odo, 0.5f);
+	u32_t i;
+	ros::Rate r(100); // 100 hz
+	for(i = 0; i < 6; i++)
+	{	
+		moveBW(U, Odo, 0.5f);
+		r.sleep();
+	}
+	for(i=0; i< 20; i++)
+	{
+		moveCW(U, Odo, 0.5f);
+		r.sleep();
+	}
+	for(i = 0; i < 10; i++)
+	{	
+		moveFW(U, Odo, 0.5f);
+		r.sleep();
+		/* Safety stop moving forward*/
+		if(CreateSensor_g.bumps_wheeldrops)
+			break;
+	}
 }
 /*
  *  Exploration Policy
@@ -270,7 +279,7 @@ void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
 void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odometry *Odo)
 {
 	f64_t roll, pitch, yaw;
-	
+
 	/* Case we have no data, do nothing */
 	if(Z->ranges.size() == 0)
 		return;
@@ -302,9 +311,9 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 	}
 	/* Turn right if there's a wall infront */
 	if(ForwardWall(Z))
-		moveCW(U, Odo, 0.1f);
+		moveCW(U, Odo, 0.5f);
 	else if(ExploreLeft(Z))
-		moveCCW(U, Odo, 0.1f);
+		moveCCW(U, Odo, 0.5f);
 	/* When there are no obstacles infront, move forward */
 	else
 		moveFW(U, Odo, 0.5f);
@@ -375,7 +384,7 @@ void joyCallback (const sensor_msgs::Joy::ConstPtr& msg)
 
 int main(int argc, char **argv)
 {
-  
+
   u32_t p_idx;   /*Particle Index */
   geometry_msgs::Twist U;     /* Motion */
 
@@ -383,17 +392,6 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "explore_node");
   ros::NodeHandle nh;
   last_time = ros::Time::now();
-#if defined(SIM)
-  
-  pub = nh.advertise<geometry_msgs::Twist>("/stage/cmd_vel", 1);
-  
-  sub = nh.subscribe<sensor_msgs::LaserScan>("/stage/base_scan", 1, got_scan);
-
-  subOdo = nh.subscribe<nav_msgs::Odometry>("/stage/odom", 1, got_odo);
-
-  /* Enable Autonmous Wonder Mode on Start */
-  autoExploreMode = true;
-#else
 
   /* Whatever the Create 2 movement is */
   pub = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
@@ -407,9 +405,9 @@ int main(int argc, char **argv)
   /* Listen to joystick joy topic */
   joy_sub = nh.subscribe("joy", 1000, joyCallback);
 
-  /* Disable Autonmous Wonder Mode on Start */
-  autoExploreMode = false;
-#endif
+  /* Enable Autonmous Wonder Mode on Start */
+  autoExploreMode = true;
+
   /* Initialize OpenGL */
   //initMclTools(argc, argv);
   //mcl_run_viz();
@@ -418,9 +416,9 @@ int main(int argc, char **argv)
   //ros::Rate r(100); // 100 hz
 
   while(ros::ok())
-  { 
+  {
     ros::spinOnce();
-    
+
     if(autoExploreMode)
     {
     	/* Autonmous Wonder mode */

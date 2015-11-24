@@ -19,12 +19,3 @@ set(CMAKE_CXX_FLAGS "-std=c++0x -O2 ${CMAKE_CXX_FLAGS}")
 #set(CMAKE_CXX_FLAGS "-std=c++11 -O2 ${CMAKE_CXX_FLAGS}")
 
 target_link_libraries(explore_node ${catkin_LIBRARIES})
-
-find_package(OpenGL REQUIRED)
-find_package(GLUT REQUIRED)
-include_directories( ${OPENGL_INCLUDE_DIRS}  ${GLUT_INCLUDE_DIRS} )
-target_link_libraries(explore_node ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} )
-
-find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
-target_link_libraries(explore_node ${OpenCV_LIBRARIES})
