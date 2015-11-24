@@ -3,23 +3,23 @@ define sicklms ranger
   range_max 4.0
   sensor(
     fov 240.0
-    samples 100
+    samples 1000
   )
   model
   (
-    size [ 0.25 0.25 0.1 ]
+    size [ 0.250 0.250 0.100 ]
     color "black"
   )
 )
 
 define robot position
 (
-  size [0.75 0.75 0.5]
+  size [0.750 1.750 0.500]
   gui_nose 1
   drive "diff"
   name "robot" 
   color "red"
-  sicklms(pose [ 0.0 0.000 0 0.000 ])
+  sicklms(pose [ 0.000 0.000 0.000 0.000 ])
 )
 
 define floorplan model
@@ -45,7 +45,7 @@ floorplan
 ( 
   name "map1"
   bitmap "hallway.png"
-  size [53.9 10.6 1.0]
+  size [53.900 10.600 1.000]
 )
 
 model
@@ -65,13 +65,13 @@ model
 
   name "mapG"
   bitmap "goal.png"
-  size [53.9 10.6 0.2]
+  size [53.900 10.600 0.200]
 )
 
 window
 ( 
   size [ 1050 350 ] 
-  scale 19.0 
+  scale 19.000 
 )
 
-robot( pose [ -10 0 0 0 ] )
+robot( pose [ 1.629 2.276 0.000 9.000 ] )

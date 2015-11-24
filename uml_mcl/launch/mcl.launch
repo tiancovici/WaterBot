@@ -1,7 +1,11 @@
 <!-- -*- xml -*- -->
 <launch>
     <node name="stage_ros" pkg="stage_ros" type="stageros" required="true" 
-          ns="stage" args="$(find uml_mcl)/share/mcl.world" />
+          ns="stage" args="$(find uml_mcl)/share/mcl.world" >
+          <remap from="/stage/cmd_vel" to="/cmd_vel" />
+          <remap from="/stage/base_scan" to="/scan" />
+          <remap from="/stage/odom" to="/odom" />
+    </node>
     <node name="motor" pkg="uml_mcl" type="motor.py" required="true" 
           output="screen" />
     <node name="laser" pkg="uml_mcl" type="laser.py" required="true" 
