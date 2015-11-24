@@ -11,7 +11,6 @@
 #include <sensor_msgs/LaserScan.h>
 #include "create_node/TurtlebotSensorState.h"
 #include "sensor_msgs/Joy.h"
-#include "tf/message_filter.h"
 #include "tf/transform_datatypes.h"
 /* OpenCV */
 #include <opencv2/core/core.hpp>
@@ -37,14 +36,15 @@ using namespace std;
 #define MAX_ANGLE 240
 
 #define PRESSED 1
-
 /*===========Internal Function Declaration =========================*/
 /* Callback functions */
 void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg);
-void got_od(const nav_msgs::Odometry::ConstPtr& msg);
-
+void got_odo(const nav_msgs::Odometry::ConstPtr& msg);
+void got_map(const nav_msgs::OccupancyGrid::ConstPtr& msg);
+void got_create_sensor(const create_node::TurtlebotSensorState::ConstPtr& msg );
 /* Explore strategy function */
 void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odometry *Odo);
+void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo);
 
 /* Move functions */
 void moveCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
@@ -52,9 +52,11 @@ void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 void moveFW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 void moveBW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s);
 
-
-f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z);
+/* Math Functions */
 u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t angle);
+f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z);
+f32_t AveBeam(f32_t theta, sensor_msgs::LaserScan *Z);
+
 
 /*============== External Data =====================================*/
 /*============== Internal data =====================================*/
@@ -77,11 +79,6 @@ ros::Duration elapsed;          /* Time Elapsed */
 
 /* Configuraiton */
 bool autoExploreMode;
-
-/*============== Constant Data =====================================*/
-//============== Type Definiton ========================================//
-
-
 /*===========Internal Function Definition ==========================*/
 
 /*
@@ -112,7 +109,45 @@ u32_t SensorAngleIdx(sensor_msgs::LaserScan *Z, u32_t degrees)
 
 	return idx;
 }
+/*  Name: AveRange
+ *
+ *  Purpose: Integrate the laser magnitued across a range of degrees, and average it
+ *	 Return Average value
+ */
+f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z)
+{
+	u32_t i;
+	u32_t init_idx = SensorAngleIdx(Z, minTheta);
+	u32_t end_idx = SensorAngleIdx(Z, maxTheta);
 
+	f32_t sum = 0;
+
+	for(i=init_idx, sum=0; i<end_idx; i++)
+	{
+		sum += Z->ranges[i];
+	}
+	return sum/(end_idx - init_idx);
+}
+/*  Name: AveBeam
+ *
+ *  Purpose: Integrate the laser magnitued across a small range of the degree of interest
+ *			 to reduce noise when looking at a specific angle
+ *	 Return Average value
+ */
+f32_t AveBeam(f32_t theta, sensor_msgs::LaserScan *Z)
+{
+	u32_t i;
+	u32_t init_idx = SensorAngleIdx(Z, theta-1);
+	u32_t end_idx = SensorAngleIdx(Z, theta+1);
+
+	f32_t sum = 0;
+
+	for(i=init_idx, sum=0; i<end_idx; i++)
+	{
+		sum += Z->ranges[i];
+	}
+	return sum/(end_idx - init_idx);
+}
 
 /*  Name: moveCW
  *
@@ -187,49 +222,6 @@ void moveCCW(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo, f32_t speed_m_s)
 
 	pub.publish(*U);
 }
-
-
-
-
-/*  Name: AveRange
- *
- *  Purpose: Integrate the laser magnitued across a range of degrees, and average it
- *	 Return Average value
- */
-f32_t AvgRange(f32_t minTheta, f32_t maxTheta, sensor_msgs::LaserScan *Z)
-{
-	u32_t i;
-	u32_t init_idx = SensorAngleIdx(Z, minTheta);
-	u32_t end_idx = SensorAngleIdx(Z, maxTheta);
-
-	f32_t sum = 0;
-
-	for(i=init_idx, sum=0; i<end_idx; i++)
-	{
-		sum += Z->ranges[i];
-	}
-	return sum/(end_idx - init_idx);
-}
-/*  Name: AveBeam
- *
- *  Purpose: Integrate the laser magnitued across a small range of the degree of interest
- *			 to reduce noise when looking at a specific angle
- *	 Return Average value
- */
-f32_t AveBeam(f32_t theta, sensor_msgs::LaserScan *Z)
-{
-	u32_t i;
-	u32_t init_idx = SensorAngleIdx(Z, theta-1);
-	u32_t end_idx = SensorAngleIdx(Z, theta+1);
-
-	f32_t sum = 0;
-
-	for(i=init_idx, sum=0; i<end_idx; i++)
-	{
-		sum += Z->ranges[i];
-	}
-	return sum/(end_idx - init_idx);
-}
 /*  Name: ExploreLeft
  *
  *  Purpose: To determine whether it's wroth exploring left
@@ -277,6 +269,8 @@ void bumpPolicy(geometry_msgs::Twist *U, nav_msgs::Odometry *Odo)
  */
 void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odometry *Odo)
 {
+	f64_t roll, pitch, yaw;
+	
 	/* Case we have no data, do nothing */
 	if(Z->ranges.size() == 0)
 		return;
@@ -293,6 +287,14 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 	else
 		moveFW(U, Odo, 4.0f);
 
+		tf::Quaternion q(Odo->pose.pose.orientation.x,
+						Odo->pose.pose.orientation.y,
+						Odo->pose.pose.orientation.z,
+						Odo->pose.pose.orientation.w);
+		tf::Matrix3x3 m(q);
+		m.getRPY(roll, pitch, yaw);
+		//cout << " yaw: " << yaw/PI*180.0f << endl;
+		//cin.get();
 #else
 	if(CreateSensor_g.bumps_wheeldrops)
 	{
@@ -308,41 +310,31 @@ void policy(geometry_msgs::Twist *U, sensor_msgs::LaserScan *Z, nav_msgs::Odomet
 		moveFW(U, Odo, 0.5f);
 #endif
 	/* For debugging purpose, wait for enter key */
-	//cin.get();
+
 }
-
-
 /*
  *  Sensor Scanner
- *
  */
 void got_scan(const sensor_msgs::LaserScan::ConstPtr& msg)
 {
   Z_t = *msg;
 }
-
-
 /*
  *  Odo Receiver
- *
  */
 void got_odo(const nav_msgs::Odometry::ConstPtr& msg)
 {
   Odo_g = *msg;
 }
-
 /*
  *  Map Receiver
- *
  */
 void got_map(const nav_msgs::OccupancyGrid::ConstPtr& msg)
 {
   Map_g = *msg;
 }
-
 /*
  *  Create Sensor Receiver
- *
  */
 void got_create_sensor(const create_node::TurtlebotSensorState::ConstPtr& msg )
 {
@@ -350,7 +342,6 @@ void got_create_sensor(const create_node::TurtlebotSensorState::ConstPtr& msg )
 }
 /*
  *  Joystick Receiver
- *
  */
 void joyCallback (const sensor_msgs::Joy::ConstPtr& msg)
 {
