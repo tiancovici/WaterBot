@@ -6,10 +6,6 @@
           <remap from="/stage/base_scan" to="/scan" />
           <remap from="/stage/odom" to="/odom" />
     </node>
-    <node name="motor" pkg="uml_mcl" type="motor.py" required="true" 
-          output="screen" />
-    <node name="laser" pkg="uml_mcl" type="laser.py" required="true" 
-          output="screen" />
-    <node name="explore_node" pkg="explore_node" type="explore_node" required="true" 
-          output="screen" />
+    <!-- <node name="explore_node" pkg="explore_node" type="explore_node" required="true" 
+          output="screen" /> -->
 </launch>
