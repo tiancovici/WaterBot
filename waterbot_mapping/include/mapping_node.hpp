@@ -12,12 +12,16 @@ public:
 	mapper(const std::string &, const std::string &, const std::string &, ros::NodeHandle*);
 	~mapper();
 	void update_map();
+	int poseToCell(double, double);
 private:
+	int width;
+	int height;
+	double resolution;
 	std::string _map_topic;
 	std::string _scan_topic;
 	std::string _pose_topic;
 	ros::NodeHandle *nh;
-	boost::thread subscribers_thread;
+	//boost::thread subscribers_thread;
 	nav_msgs::Odometry ground_truth;
 	nav_msgs::OccupancyGrid map;
 	sensor_msgs::LaserScan last_scan;
@@ -26,5 +30,6 @@ private:
 	ros::Publisher map_pub;
 	void laser_callback(const sensor_msgs::LaserScan::ConstPtr&);
 	void pose_callback(const nav_msgs::Odometry::ConstPtr&);
+	void enlarge();
 	void start_subscribers();
 };
