@@ -5,6 +5,11 @@
 #include <boost/thread.hpp>
 #include <ros/ros.h>
 #include <string>
+#include <vector>
+#include <tf/transform_datatypes.h>
+#include <tf/transform_listener.h>
+#include "occupancy_grid_utils/coordinate_conversions.h"
+
 
 class mapper
 {
@@ -13,23 +18,27 @@ public:
 	~mapper();
 	void update_map();
 	int poseToCell(double, double);
+	void cellToPose(int, double &, double &);
+	std::vector<int> cellsInView(double, double, double);
+	int rayHittingCell(double, double, double, int);
+	tf::TransformListener tf_;
+	tf::Transform worldToMap;
+	tf::Transform mapToWorld;
 private:
 	int width;
 	int height;
 	double resolution;
+	std::string _map_frame;
 	std::string _map_topic;
 	std::string _scan_topic;
 	std::string _pose_topic;
 	ros::NodeHandle *nh;
 	//boost::thread subscribers_thread;
-	nav_msgs::Odometry ground_truth;
 	nav_msgs::OccupancyGrid map;
 	sensor_msgs::LaserScan last_scan;
 	ros::Subscriber laser_sub;
-	ros::Subscriber pose_sub;
 	ros::Publisher map_pub;
 	void laser_callback(const sensor_msgs::LaserScan::ConstPtr&);
-	void pose_callback(const nav_msgs::Odometry::ConstPtr&);
 	void enlarge();
 	void start_subscribers();
 };

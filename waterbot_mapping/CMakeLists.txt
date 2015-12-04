@@ -6,8 +6,10 @@ project(waterbot_mapping)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  tf
   nav_msgs
   sensor_msgs
+  occupancy_grid_utils
 )
 
 ## System dependencies are found with CMake's conventions
@@ -101,8 +103,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES waterbot_mapping
-  CATKIN_DEPENDS roscpp nav_msgs sensor_msgs
+#  LIBRARIES occupancy_grid_utils
+  CATKIN_DEPENDS tf occupancy_grid_utils roscpp nav_msgs sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -118,9 +120,9 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(waterbot_mapping
-#   src/${PROJECT_NAME}/waterbot_mapping.cpp
-# )
+#add_library(occupancy_grid_utils
+#  src/occupancy_grid_utils.cpp
+#)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
