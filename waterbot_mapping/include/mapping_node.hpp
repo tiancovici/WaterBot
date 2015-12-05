@@ -8,8 +8,6 @@
 #include <vector>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
-#include "occupancy_grid_utils/coordinate_conversions.h"
-
 
 class mapper
 {

@@ -9,7 +9,6 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   nav_msgs
   sensor_msgs
-  occupancy_grid_utils
 )
 
 ## System dependencies are found with CMake's conventions
@@ -104,7 +103,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES occupancy_grid_utils
-  CATKIN_DEPENDS tf occupancy_grid_utils roscpp nav_msgs sensor_msgs
+  CATKIN_DEPENDS tf roscpp nav_msgs sensor_msgs
 #  DEPENDS system_lib
 )
 
