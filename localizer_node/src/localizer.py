@@ -11,9 +11,10 @@ import mcl_tools
 
 rp.init_node('localizer_node')
 
-PAR_COUNT = 600  # total number of particles
+PAR_COUNT = 200  # total number of particles
 RAND_PAR = int(math.floor(0.05 * PAR_COUNT))  # % of total particles to randomize
-PAR_LIFE = 5  # How many time steps before adding random particles into array
+PAR_LIFE = 20  # How many time steps before adding random particles into array
+PAR_LIFE_COUNTER = 0
 
 odometry = None
 
@@ -36,7 +37,7 @@ def particle_weight(scan, particle):
     scan_inc = scan.angle_increment * 100
 
     prob = 1.0
-    for i in [i for i in xrange(len(scan.ranges)) if i % 100 == 0]:
+    for i in xrange(len(scan.ranges) / 100):
         sensed = scan.ranges[i]
         val = scan_min + (i * scan_inc)
         traced = mcl_tools.map_range(particle, val)
@@ -50,7 +51,7 @@ def particle_weight(scan, particle):
 
 # particle_filter(particle set, action taken, the laser readings)
 def particle_filter(ps, control, scan):
-    global last_time, PAR_COUNT
+    global last_time, PAR_COUNT, PAR_LIFE, RAND_PAR, PAR_LIFE_COUNTER
     if last_time is None:
         last_time = rp.get_rostime()
 
@@ -70,27 +71,33 @@ def particle_filter(ps, control, scan):
     ps = new_ps  # update our particle set
 
     # update weights
+    # weights = map(partial(particle_weight, scan), ps)  # get the weights for each particle
     weights = []
     for part in ps:
         weight = particle_weight(scan, part)
         weights.append(weight)
-        # print weight
-        # print weights
 
-        # weights = map(partial(particle_weight, scan), ps)  # get the weights for each particle
-        # weights = np.multiply(weights, 1.0 / np.sum(weights))  # normalize the weights
+    # normalize the weights
+    weights = np.multiply(weights, 1.0 / np.sum(weights))
 
-    ps = mcl_tools.random_sample(ps, PAR_COUNT - RAND_PAR, weights)
-    rand_ps = []
-    for x in range(RAND_PAR):
-        rand_ps.append(mcl_tools.random_particle())
-    ps.extend(rand_ps)
-    return ps
-    # return [mcl_tools.random_particle() for ii in range(PAR_COUNT)]  # return a random set.
-    # return ps
+    # resampling
+    if PAR_LIFE_COUNTER < PAR_LIFE:
+        ps = mcl_tools.random_sample(ps, PAR_COUNT, weights)
+        PAR_LIFE_COUNTER += 1
+        return ps
+    else:
+        ps = mcl_tools.random_sample(ps, PAR_COUNT - RAND_PAR, weights)
+        rand_ps = []
+        # include a percentage of random particles
+        for x in range(RAND_PAR):
+            rand_ps.append(mcl_tools.random_particle())
+        ps.extend(rand_ps)
+        PAR_LIFE_COUNTER = 0
+        return ps
+
+        # convert polar control and initial position into a probabilistically determined cartesian position
 
 
-# convert polar control and initial position into a probabilistically determined cartesian position
 def integrate_control_to_distance(polar_control, dt, original_pos):
     (xo, yo, to) = original_pos
     (vl, vt) = polar_control
