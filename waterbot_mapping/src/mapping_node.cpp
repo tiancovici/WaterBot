@@ -2,26 +2,8 @@
 #include <math.h>
 #include <boost/foreach.hpp>
 #include <iostream>
+#include <limits>
 
-int mapper::poseToCell(double x, double y)
-{
-	return static_cast<int>(floor((x- map.info.origin.position.x)/map.info.resolution) +
-							(floor(-(map.info.origin.position.y - y)/map.info.resolution) * map.info.width));
-}
-
-void mapper::cellToPose(int cell, double &x, double &y)
-{
-
-}
-
-std::vector<int> mapper::cellsInView(double x, double y, double theta)
-{
-
-}
-
-int mapper::rayHittingCell(double x, double y, double theta, int cell)
-{
-}
 
 mapper::mapper(const std::string &map_topic, const std::string &scan_topic, const std::string &pose_topic, ros::NodeHandle *handle) : _map_topic(map_topic),
 			   _scan_topic(scan_topic), _pose_topic(pose_topic), nh(handle), _map_frame("map")//, subscribers_thread(boost::bind(&mapper::start_subscribers, this))
@@ -41,6 +23,8 @@ mapper::mapper(const std::string &map_topic, const std::string &scan_topic, cons
 		map.data.push_back(-1);
 	tf::poseMsgToTF (map.info.origin, worldToMap);
 	mapToWorld = worldToMap.inverse();
+	last_pose.setIdentity();
+	last_pose.getOrigin().setValue(std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
 	//std::cout<<"world to map: "<<worldToMap << '\n';
 	//std::cout<<"map to world: "<<mapToWorld << '\n';
 	update_map();
@@ -61,56 +45,69 @@ void mapper::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg)
     tf::Pose identity(tf::createIdentityQuaternion(), tf::Vector3(0, 0, 0));
     tf::StampedTransform odom_pose;
     tf_.lookupTransform(_map_frame, msg->header.frame_id, ros::Time(0), odom_pose);
-    tfScalar roll, pitch, yaw;
-    tf::Matrix3x3(odom_pose.getRotation()).getRPY(roll, pitch, yaw);
-    tf::Point pose_point;
-    tf::Point point_in_map;
-    double looking_at;
-    double map_res = map.info.resolution;
-    int max_cell = msg->range_max / map_res;
-    int i;
-    double a, cos, sin;
-    double increment;
-    int index;
-    for (i = 0, a = msg->angle_min; i < (msg->ranges).size(); i++, a += msg->angle_increment)
-    {
-    	looking_at = yaw + a;
-    	//ROS_INFO("looking at %f", looking_at );
-    	sin = std::sin(looking_at);
-    	cos = std::cos(looking_at);
-    	pose_point.setX(0);//odom_pose.getOrigin().getX());
-    	pose_point.setY(0);//odom_pose.getOrigin().getY());
-    	pose_point.setZ(odom_pose.getOrigin().getZ());
-    	for (int j = 0; j < max_cell; j++)
-    	{
-    		increment = j*map_res;
-    		pose_point.setX(pose_point.getX() + (increment * sin));
-    		pose_point.setY(pose_point.getY() + (increment * cos));
-			index = floor((pose_point.getX() - map.info.origin.position.x) / map.info.resolution) + (floor((pose_point.getY() - map.info.origin.position.y)/map.info.resolution) * map.info.width);
-			//ROS_INFO("index = %d", index);
-			if (increment < msg->ranges[i])
-    		{
-				//ROS_INFO("FREE");
-    			//ROS_INFO("FREE CELL AT INDEX %d", occupancy_grid_utils::pointIndex(map.info, pose_point));
-    			//map.data[occupancy_grid_utils::pointIndex(map.info, pose_point)] = 0;
-				if (index >= 0 && index < map.data.size())
-					map.data[index] = 0;
-				//else
-				//	ROS_INFO("out of bounds, size: %lu, index: %d", map.data.size(), index);
-    		}
-    		else
-    		{
-    			//ROS_INFO("OCCUPIED");
-    			//ROS_INFO("OCC CELL AT INDEX %d", occupancy_grid_utils::pointIndex(map.info, pose_point));
-    			if (index >= 0 && index < map.data.size())
-    				map.data[index] = 100;
-    			//else
-    			//	ROS_INFO("out of bounds, size: %lu, index: %d", map.data.size(), index);
-    		}
-    	}
-    }
+	if (odom_pose.getOrigin().distance(last_pose.getOrigin()) >= 0.1 || odom_pose.getRotation().angle(last_pose.getRotation()) >= 0.1 ){
+		last_pose = odom_pose;
+		tfScalar roll, pitch, yaw;
+		tf::Matrix3x3(odom_pose.getRotation()).getRPY(roll, pitch, yaw);
+		tf::Point pose_point;
+		tf::Point point_in_map;
+		double looking_at;
+		double map_res = map.info.resolution;
+		int max_cell = msg->range_max / map_res;
+		int i;
+		double a, scan_cos, scan_sin;
+		double increment;
+		int array_index;
+		for (i = 0, a = msg->angle_min; i < (msg->ranges).size(); i++, a += (msg->angle_increment))
+		{
+			looking_at = yaw + a;
+			//ROS_INFO("looking at %f", looking_at );
+			scan_sin = std::sin(looking_at);
+			scan_cos = std::cos(looking_at);
+			pose_point.setX(odom_pose.getOrigin().getX());
+			pose_point.setY(odom_pose.getOrigin().getY());
+			pose_point.setZ(odom_pose.getOrigin().getZ());
+
+			for (int j = 0; j < max_cell; j++)
+			{
+				increment = (float)j * (map_res);
+				//ROS_INFO("map_res %f, increment %f", map_res, increment);
+				ros::Duration d(0.5);
+				//d.sleep();
+				//Flipped cos and sin, seemed to help?
+				pose_point.setX(pose_point.getX() + (map_res * scan_cos));
+				pose_point.setY(pose_point.getY() + (map_res * scan_sin));
+				array_index = floor((pose_point.getX() - map.info.origin.position.x) / map.info.resolution) + (floor((pose_point.getY() - map.info.origin.position.y)/map.info.resolution) * map.info.width);
+				//ROS_INFO("x = %f, y = %f", pose_point.getX(), pose_point.getY());
+				if (map.data[array_index] < 0 || map.data[array_index] > 100)
+					map.data[array_index] = 50;
+				if (increment < msg->ranges[i])
+				{
+					//ROS_INFO("FREE");
+					if (array_index >= 0 && array_index < map.data.size() )
+					{
+						map.data[array_index]--;
+						map.data[array_index] < 0 ? 0 : map.data[array_index];
+					}
+					//else
+					//	enlarge map, then do that
+				}
+				else
+				{
+					//ROS_INFO("OCCUPIED");
+					if (array_index >= 0 && array_index < map.data.size())
+					{
+						map.data[array_index]++;
+						map.data[array_index] > 100 ? 100 : map.data[array_index];
+					}
+					//else
+					//	enlarge map, then do that
+				}
+			}
+		}
+		update_map();
+	}
     last_scan = *msg;
-    update_map();
 }
 
 void mapper::start_subscribers()
@@ -132,12 +129,6 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "mapping_node");
     ros::NodeHandle nh;
-    mapper the_mapper("/map", "/scan", "/stage/base_pose_ground_truth", &nh);
+    mapper the_mapper("/map", "/scan", /*"/stage/base_pose_ground_truth"*/ "/odom", &nh);
     ros::spin();
-    /*ros::Rate rate(1);
-    while(ros::ok())
-    {
-    	the_mapper.update_map();
-    	rate.sleep();
-    }*/
 }

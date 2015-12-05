@@ -17,10 +17,6 @@ public:
 	mapper(const std::string &, const std::string &, const std::string &, ros::NodeHandle*);
 	~mapper();
 	void update_map();
-	int poseToCell(double, double);
-	void cellToPose(int, double &, double &);
-	std::vector<int> cellsInView(double, double, double);
-	int rayHittingCell(double, double, double, int);
 	tf::TransformListener tf_;
 	tf::Transform worldToMap;
 	tf::Transform mapToWorld;
@@ -38,6 +34,7 @@ private:
 	sensor_msgs::LaserScan last_scan;
 	ros::Subscriber laser_sub;
 	ros::Publisher map_pub;
+	tf::StampedTransform last_pose;
 	void laser_callback(const sensor_msgs::LaserScan::ConstPtr&);
 	void enlarge();
 	void start_subscribers();
