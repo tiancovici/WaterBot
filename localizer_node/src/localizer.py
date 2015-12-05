@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 import numpy as np
+from functools import partial
+import math
 
 import rospy as rp
+from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
+
+import mcl_tools
 
 rp.init_node('localizer_node')
-import mcl_tools
-from math import atan2
-from functools import partial
 
-from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist
+PAR_COUNT = 600  # total number of particles
+RAND_PAR = int(math.floor(0.05 * PAR_COUNT))  # % of total particles to randomize
+PAR_LIFE = 5  # How many time steps before adding random particles into array
 
-PAR_COUNT = 1500
-cmd_vel = None
+odometry = None
 
 STD_DEV_HIT = 1.0
 MAX_DIST = mcl_tools.LASER_MAX
@@ -23,22 +26,24 @@ Z_MAX = 0.1
 last_time = None
 angles = None
 
-# State
+# Initially uncertain
 parset = [mcl_tools.random_particle() for ii in range(PAR_COUNT)]
 
 
 # get the weight of a single particle given a laser scan
 def particle_weight(scan, particle):
     scan_min = scan.angle_min
-    scan_inc = scan.angle_increment
+    scan_inc = scan.angle_increment * 100
 
     prob = 1.0
-    for i in xrange(len(scan.ranges)):
+    for i in [i for i in xrange(len(scan.ranges)) if i % 100 == 0]:
         sensed = scan.ranges[i]
-        traced = mcl_tools.map_range(particle, scan_min + (i * scan_inc))
-        prob *= Z_HIT * p_hit(sensed, traced) \
-                + Z_RAND * p_rand(sensed, traced) \
-                + Z_MAX * p_max(sensed, traced)
+        val = scan_min + (i * scan_inc)
+        traced = mcl_tools.map_range(particle, val)
+        zhit = Z_HIT * p_hit(sensed, traced)
+        zmax = Z_MAX * p_max(sensed, traced)
+        zrand = Z_RAND * p_rand(sensed, traced)
+        prob *= (zhit + zmax + zrand)
 
     return prob
 
@@ -50,21 +55,39 @@ def particle_filter(ps, control, scan):
         last_time = rp.get_rostime()
 
     # probabilistically move all the particles
-    rp.loginfo((rp.get_rostime() - last_time).to_sec())
+    # rp.loginfo((rp.get_rostime() - last_time).to_sec())
     new_pos = partial(integrate_control_to_distance, control, (rp.get_rostime() - last_time).to_sec())
     last_time = rp.get_rostime()
-    ps = [new_pos(part) for part in ps if not mcl_tools.map_hit(part[0], part[1])]
-
-    # replace pixels that are outside of the map with new randomly placed pixels
-    while len(ps) < PAR_COUNT:
-        part = mcl_tools.random_particle()
+    new_ps = []
+    for part in ps:
+        # part[0] = x
+        # part[1] = y
         if not mcl_tools.map_hit(part[0], part[1]):
-            ps.append(part)
+            # print "hit"
+            new_ps.append(new_pos(part))
+        else:
+            new_ps.append(mcl_tools.random_particle())
+    ps = new_ps  # update our particle set
 
-    weights = map(partial(particle_weight, scan), ps)  # get the weights for each particle
-    weights = np.multiply(weights, 1.0 / np.sum(weights))  # normalize the weights
+    # update weights
+    weights = []
+    for part in ps:
+        weight = particle_weight(scan, part)
+        weights.append(weight)
+        # print weight
+        # print weights
 
-    return mcl_tools.random_sample(ps, PAR_COUNT, weights)
+        # weights = map(partial(particle_weight, scan), ps)  # get the weights for each particle
+        # weights = np.multiply(weights, 1.0 / np.sum(weights))  # normalize the weights
+
+    ps = mcl_tools.random_sample(ps, PAR_COUNT - RAND_PAR, weights)
+    rand_ps = []
+    for x in range(RAND_PAR):
+        rand_ps.append(mcl_tools.random_particle())
+    ps.extend(rand_ps)
+    return ps
+    # return [mcl_tools.random_particle() for ii in range(PAR_COUNT)]  # return a random set.
+    # return ps
 
 
 # convert polar control and initial position into a probabilistically determined cartesian position
@@ -117,36 +140,29 @@ def p_rand(sensed_distance, raytraced_distance):
 
 
 def got_scan(msg):
-    global parset, cmd_vel, angles
+    global parset, odometry
 
-    if angles is None:  # statically use it after initialization (message shouldn't change length while it's running)
-        angles = np.multiply(range(len(msg.ranges)), msg.angle_increment) + msg.angle_min
+    if odometry is not None:
+        # print odometry
+        linear_speed = odometry.twist.twist.linear.x
+        angular_speed = odometry.twist.twist.angular.z
+        control = (linear_speed, angular_speed)
+        # print control
 
-    measurements = zip(msg.ranges, angles)
-    fx = np.sum([l * np.cos(t) for l, t in measurements])
-    fy = np.sum([l * np.sin(t) for l, t in measurements])
+        parset = particle_filter(parset, control, msg)  # run particle filter
+        mcl_tools.show_particles(parset)  # render particle cloud
+    else:
+        print "odometry is none"
 
-    # linear_speed = 0.6*(msg.ranges[2]) # scale the speed by the range on the front sensor
-    linear_speed = 0.2 * (msg.ranges[2])  # scale the speed by the range on the front sensor
-    angular_speed = (10. / msg.ranges[2]) * atan2(fy, fx)
-    control = (linear_speed, angular_speed)
-    rp.loginfo('control ' + str(control))
 
-    parset = particle_filter(parset, control, msg)
-    mcl_tools.show_particles(parset)
-
-    cmd = Twist()
-    (cmd.linear.x, cmd.angular.z) = control
-    cmd_vel.publish(cmd)
+def got_odom(msg):
+    global odometry
+    odometry = msg
 
 
 if __name__ == '__main__':
-    # Uncomment for debugging if nesssary, recomment before turning in.
-    # rp.Subscriber('/stage/base_pose_ground_truth', Odometry, mcl_debug.got_odom)
-
-    rp.Subscriber('/robot/base_scan', LaserScan, got_scan, queue_size=1)
-    # rp.Subscriber('/scan', LaserScan, got_scan, queue_size=1)
-    # cmd_vel = rp.Publisher('/robot/cmd_vel', Twist, queue_size=1)
+    rp.Subscriber('/scan', LaserScan, got_scan, queue_size=1)
+    rp.Subscriber('/odom', Odometry, got_odom, queue_size=1)
 
     mcl_tools.mcl_init('localizer_node')
     mcl_tools.mcl_run_viz()
