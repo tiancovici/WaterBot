@@ -14,7 +14,7 @@
 class mapper
 {
 public:
-	mapper(const std::string &, const std::string &, const std::string &, ros::NodeHandle*);
+	mapper(const std::string &, const std::string &, ros::NodeHandle*);
 	~mapper();
 	void update_map();
 	tf::TransformListener tf_;
@@ -27,7 +27,6 @@ private:
 	std::string _map_frame;
 	std::string _map_topic;
 	std::string _scan_topic;
-	std::string _pose_topic;
 	ros::NodeHandle *nh;
 	//boost::thread subscribers_thread;
 	nav_msgs::OccupancyGrid map;

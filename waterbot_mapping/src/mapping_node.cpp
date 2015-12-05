@@ -5,8 +5,8 @@
 #include <limits>
 
 
-mapper::mapper(const std::string &map_topic, const std::string &scan_topic, const std::string &pose_topic, ros::NodeHandle *handle) : _map_topic(map_topic),
-			   _scan_topic(scan_topic), _pose_topic(pose_topic), nh(handle), _map_frame("map")//, subscribers_thread(boost::bind(&mapper::start_subscribers, this))
+mapper::mapper(const std::string &map_topic, const std::string &scan_topic, ros::NodeHandle *handle) : _map_topic(map_topic),
+			   _scan_topic(scan_topic), nh(handle), _map_frame("map")//, subscribers_thread(boost::bind(&mapper::start_subscribers, this))
 {
 	start_subscribers();
 	map_pub = nh->advertise<nav_msgs::OccupancyGrid>(_map_topic, 1, true);
@@ -129,6 +129,6 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "mapping_node");
     ros::NodeHandle nh;
-    mapper the_mapper("/map", "/scan", /*"/stage/base_pose_ground_truth"*/ "/odom", &nh);
+    mapper the_mapper("/map", "/scan", &nh);
     ros::spin();
 }
