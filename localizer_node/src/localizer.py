@@ -11,8 +11,8 @@ import mcl_tools
 
 rp.init_node('localizer_node')
 
-PAR_COUNT = 200  # total number of particles
-RAND_PAR = int(math.floor(0.05 * PAR_COUNT))  # % of total particles to randomize
+PAR_COUNT = 500  # total number of particles
+RAND_PAR = int(math.floor(0.1 * PAR_COUNT))  # % of total particles to randomize
 PAR_LIFE = 20  # How many time steps before adding random particles into array
 PAR_LIFE_COUNTER = 0
 
@@ -34,17 +34,19 @@ parset = [mcl_tools.random_particle() for ii in range(PAR_COUNT)]
 # get the weight of a single particle given a laser scan
 def particle_weight(scan, particle):
     scan_min = scan.angle_min
-    scan_inc = scan.angle_increment * 100
+    scan_inc = scan.angle_increment * 700
+    # scan_inc = scan.angle_increment
 
     prob = 1.0
-    for i in xrange(len(scan.ranges) / 100):
-        sensed = scan.ranges[i]
-        val = scan_min + (i * scan_inc)
-        traced = mcl_tools.map_range(particle, val)
-        zhit = Z_HIT * p_hit(sensed, traced)
-        zmax = Z_MAX * p_max(sensed, traced)
-        zrand = Z_RAND * p_rand(sensed, traced)
-        prob *= (zhit + zmax + zrand)
+    for i in xrange(len(scan.ranges)):
+        if i % 700 is 0:
+            sensed = scan.ranges[i]
+            val = scan_min + (i * scan_inc)
+            traced = mcl_tools.map_range(particle, val)
+            zhit = Z_HIT * p_hit(sensed, traced)
+            zmax = Z_MAX * p_max(sensed, traced)
+            zrand = Z_RAND * p_rand(sensed, traced)
+            prob *= (zhit + zmax + zrand)
 
     return prob
 
