@@ -11,10 +11,16 @@ import mcl_tools
 
 rp.init_node('localizer_node')
 
-PAR_COUNT = 500  # total number of particles
-RAND_PAR = int(math.floor(0.1 * PAR_COUNT))  # % of total particles to randomize
-PAR_LIFE = 20  # How many time steps before adding random particles into array
-PAR_LIFE_COUNTER = 0
+PAR_COUNT = 200  # total number of particles
+SHORT_UNCERT = int(math.floor(0.01 * PAR_COUNT))  # % of total particles to randomize
+SHORT_LIFE = 10  # How many time steps before adding random particles into array
+SHORT_COUNT = 0
+MID_UNCERT = int(math.floor(0.20 * PAR_COUNT))  # % of total particles to randomize
+MID_LIFE = 30  # How many time steps before adding random particles into array
+MID_COUNT = 0
+LONG_UNCERT = int(math.floor(0.80 * PAR_COUNT))  # % of total particles to randomize
+LONG_LIFE = 80  # How many time steps before adding random particles into array
+LONG_COUNT = 0
 
 odometry = None
 
@@ -34,12 +40,13 @@ parset = [mcl_tools.random_particle() for ii in range(PAR_COUNT)]
 # get the weight of a single particle given a laser scan
 def particle_weight(scan, particle):
     scan_min = scan.angle_min
-    scan_inc = scan.angle_increment * 700
-    # scan_inc = scan.angle_increment
+    # scan_inc = scan.angle_increment * 50
+    scan_inc = scan.angle_increment
 
     prob = 1.0
     for i in xrange(len(scan.ranges)):
-        if i % 700 is 0:
+        if i % 50 is 0:
+            # print "scan: " + str(i)
             sensed = scan.ranges[i]
             val = scan_min + (i * scan_inc)
             traced = mcl_tools.map_range(particle, val)
@@ -53,7 +60,9 @@ def particle_weight(scan, particle):
 
 # particle_filter(particle set, action taken, the laser readings)
 def particle_filter(ps, control, scan):
-    global last_time, PAR_COUNT, PAR_LIFE, RAND_PAR, PAR_LIFE_COUNTER
+    global last_time, PAR_COUNT, SHORT_LIFE, SHORT_UNCERT, SHORT_COUNT, \
+        MID_LIFE, MID_UNCERT, MID_COUNT, LONG_LIFE, LONG_UNCERT, LONG_COUNT
+
     if last_time is None:
         last_time = rp.get_rostime()
 
@@ -82,24 +91,64 @@ def particle_filter(ps, control, scan):
     # normalize the weights
     weights = np.multiply(weights, 1.0 / np.sum(weights))
 
-    # resampling
-    if PAR_LIFE_COUNTER < PAR_LIFE:
-        ps = mcl_tools.random_sample(ps, PAR_COUNT, weights)
-        PAR_LIFE_COUNTER += 1
-        return ps
-    else:
-        ps = mcl_tools.random_sample(ps, PAR_COUNT - RAND_PAR, weights)
+    '''
+    ############ RESAMPLING! ##############
+    '''
+    correction = False
+
+    # minor corrections
+    if SHORT_COUNT > SHORT_LIFE:
+        correction = True
+        # resample 1%
+        ps = mcl_tools.random_sample(ps, PAR_COUNT - SHORT_UNCERT, weights)
         rand_ps = []
-        # include a percentage of random particles
-        for x in range(RAND_PAR):
+        for x in range(SHORT_UNCERT):
             rand_ps.append(mcl_tools.random_particle())
         ps.extend(rand_ps)
-        PAR_LIFE_COUNTER = 0
+
+        SHORT_COUNT = 0
+        # print "short"
+        return ps
+    else:
+        SHORT_COUNT += 1
+
+    # mid level corrections
+    if MID_COUNT > MID_LIFE:  # crisis
+        correction = True
+        # resample 20%
+        ps = mcl_tools.random_sample(ps, PAR_COUNT - MID_UNCERT, weights)
+        rand_ps = []
+        for x in range(MID_UNCERT):
+            rand_ps.append(mcl_tools.random_particle())
+        ps.extend(rand_ps)
+        MID_COUNT = 0
+        print "mid"
+        return ps
+    else:
+        MID_COUNT += 1
+
+    # big corrections
+    if LONG_COUNT > LONG_LIFE:
+        correction = True
+        # resample 50%
+        ps = mcl_tools.random_sample(ps, PAR_COUNT - LONG_UNCERT, weights)
+        rand_ps = []
+        for x in range(LONG_UNCERT):
+            rand_ps.append(mcl_tools.random_particle())
+        ps.extend(rand_ps)
+        LONG_COUNT = 0
+        print "long"
+        return ps
+    else:
+        LONG_COUNT += 1
+
+    # no corrections (normal resample all particles)
+    if not correction:
+        ps = mcl_tools.random_sample(ps, PAR_COUNT, weights)
         return ps
 
-        # convert polar control and initial position into a probabilistically determined cartesian position
 
-
+# convert polar control and initial position into a probabilistically determined cartesian position
 def integrate_control_to_distance(polar_control, dt, original_pos):
     (xo, yo, to) = original_pos
     (vl, vt) = polar_control
