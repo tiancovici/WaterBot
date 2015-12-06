@@ -37,7 +37,7 @@ mapper::~mapper()
 
 void mapper::laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg)
 {
-	if (!tf_.waitForTransform(_map_frame, msg->header.frame_id, msg->header.stamp, ros::Duration(1.0)))
+  if (!tf_.waitForTransform(_map_frame, msg->header.frame_id, /*msg->header.stamp*/ros::Time(0), ros::Duration(1.0)))
 	    {
 	      ROS_WARN_STREAM ("Timed out waiting for transform from map to scan");
 	      return;
