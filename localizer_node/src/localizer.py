@@ -7,14 +7,12 @@ import rospy as rp
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 
+
 import mcl_tools
 
 rp.init_node('localizer_node')
 
 PAR_COUNT = 200  # total number of particles
-SHORT_UNCERT = int(math.floor(0.01 * PAR_COUNT))  # % of total particles to randomize
-SHORT_LIFE = 10  # How many time steps before adding random particles into array
-SHORT_COUNT = 0
 MID_UNCERT = int(math.floor(0.20 * PAR_COUNT))  # % of total particles to randomize
 MID_LIFE = 30  # How many time steps before adding random particles into array
 MID_COUNT = 0
@@ -60,14 +58,13 @@ def particle_weight(scan, particle):
 
 # particle_filter(particle set, action taken, the laser readings)
 def particle_filter(ps, control, scan):
-    global last_time, PAR_COUNT, SHORT_LIFE, SHORT_UNCERT, SHORT_COUNT, \
-        MID_LIFE, MID_UNCERT, MID_COUNT, LONG_LIFE, LONG_UNCERT, LONG_COUNT
+    global last_time, PAR_COUNT, MID_LIFE, MID_UNCERT, MID_COUNT, \
+        LONG_LIFE, LONG_UNCERT, LONG_COUNT
 
     if last_time is None:
         last_time = rp.get_rostime()
 
     # probabilistically move all the particles
-    # rp.loginfo((rp.get_rostime() - last_time).to_sec())
     new_pos = partial(integrate_control_to_distance, control, (rp.get_rostime() - last_time).to_sec())
     last_time = rp.get_rostime()
     new_ps = []
@@ -81,8 +78,7 @@ def particle_filter(ps, control, scan):
             new_ps.append(mcl_tools.random_particle())
     ps = new_ps  # update our particle set
 
-    # update weights
-    # weights = map(partial(particle_weight, scan), ps)  # get the weights for each particle
+    # update weights of each particle
     weights = []
     for part in ps:
         weight = particle_weight(scan, part)
@@ -95,22 +91,6 @@ def particle_filter(ps, control, scan):
     ############ RESAMPLING! ##############
     '''
     correction = False
-
-    # minor corrections
-    if SHORT_COUNT > SHORT_LIFE:
-        correction = True
-        # resample 1%
-        ps = mcl_tools.random_sample(ps, PAR_COUNT - SHORT_UNCERT, weights)
-        rand_ps = []
-        for x in range(SHORT_UNCERT):
-            rand_ps.append(mcl_tools.random_particle())
-        ps.extend(rand_ps)
-
-        SHORT_COUNT = 0
-        # print "short"
-        return ps
-    else:
-        SHORT_COUNT += 1
 
     # mid level corrections
     if MID_COUNT > MID_LIFE:  # crisis
@@ -217,10 +197,13 @@ def got_odom(msg):
     global odometry
     odometry = msg
 
+def got_map(msg):
+    print msg
 
 if __name__ == '__main__':
     rp.Subscriber('/scan', LaserScan, got_scan, queue_size=1)
     rp.Subscriber('/odom', Odometry, got_odom, queue_size=1)
+    # rp.Subscriber('/map', )
 
     mcl_tools.mcl_init('localizer_node')
     mcl_tools.mcl_run_viz()
